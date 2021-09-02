@@ -5,15 +5,19 @@ fn main() {
     let mut args = std::env::args().skip(1);
     let key = args.next().unwrap();
     let value = args.next().unwrap();
-    let contents = format!("{}\t{}\n", key, value);
 
-    fs::write("kv.db", contents).unwrap();
+    println!("{}\t{}\n", key, value);
 
-    let db = Database::new();
+    let mut db = Database::new().expect("Creating DB failed");
+
+    db.insert(key.clone(), value.clone());
+    db.insert(key.to_uppercase(), value.clone());
+    db.flush().unwrap();
 }
 
 struct Database {
     map: HashMap<String, String>,
+    flush: bool,
 }
 
 impl Database {
@@ -26,6 +30,36 @@ impl Database {
             map.insert(key.to_string(), value.to_string());
         }
 
-        Ok(Database { map })
+        Ok(Database { map, flush: false })
     }
+
+    fn insert(&mut self, key: String, value: String) {
+        self.map.insert(key, value);
+    }
+
+    fn flush(mut self) -> std::io::Result<()> {
+        self.flush = true;
+        do_flush(&self)
+    }
+}
+
+impl Drop for Database {
+    fn drop(&mut self) {
+        if !self.flush {
+            let _ = do_flush(self);
+        }
+    }
+}
+
+fn do_flush(db: &Database) -> std::io::Result<()> {
+    let mut contents = String::new();
+
+    for (key, value) in &db.map {
+        contents.push_str(key);
+        contents.push('\t');
+        contents.push_str(value);
+        contents.push('\n');
+    }
+
+    std::fs::write("kv.db", contents)
 }
